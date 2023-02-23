@@ -19,6 +19,8 @@ namespace Elasticsearch.Net.Aws
         private readonly AWSCredentials _credentials;
         private readonly RegionEndpoint _region;
 
+        public bool IsServerlessService;
+
         static AWSCredentials GetCredentials()
             => FallbackCredentialsFactory.GetCredentials()
             ?? throw new Exception("Unable to obtain AWS Credentials.");
@@ -84,7 +86,7 @@ namespace Elasticsearch.Net.Aws
         protected override HttpMessageHandler CreateHttpClientHandler(RequestData requestData)
         {
             var innerHandler = base.CreateHttpClientHandler(requestData);
-            return new SigningHttpMessageHandler(_credentials, _region, innerHandler);
+            return new SigningHttpMessageHandler(_credentials, _region, innerHandler, IsServerlessService);
         }
 #else
         [ThreadStatic]

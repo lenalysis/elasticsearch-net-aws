@@ -15,19 +15,23 @@ namespace Elasticsearch.Net.Aws
         readonly AWSCredentials _credentials;
         readonly RegionEndpoint _region;
         readonly HttpMessageHandler _innerHandler;
+        readonly bool _isServerlessService;
         bool _innerHandlerDisposed;
 
-        public SigningHttpMessageHandler(AWSCredentials credentials, RegionEndpoint region, HttpMessageHandler innerHandler)
+        public SigningHttpMessageHandler(AWSCredentials credentials, RegionEndpoint region,
+            HttpMessageHandler innerHandler, bool isServerlessService)
         {
             _credentials = credentials;
             _region = region;
             _innerHandler = innerHandler;
+            _isServerlessService = isServerlessService;
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var credentials = await _credentials.GetCredentialsAsync().ConfigureAwait(false);
-            await SignV4Util.SignRequestAsync(new HttpRequestMessageAdapter(request), credentials, _region.SystemName, "es").ConfigureAwait(false);
+            var serviceName = _isServerlessService ? "aoss" : "es";
+            await SignV4Util.SignRequestAsync(new HttpRequestMessageAdapter(request), credentials, _region.SystemName, serviceName).ConfigureAwait(false);
             return await _innerHandler.SendAsync(request, cancellationToken).ConfigureAwait(false);
         }
 

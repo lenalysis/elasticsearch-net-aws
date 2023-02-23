@@ -35,7 +35,7 @@ namespace Tests
         public void TestDispose()
         {
             var inner = new TestHandler();
-            var outer = new SigningHttpMessageHandler(new BasicAWSCredentials("foo", "bar"), RegionEndpoint.USEast1, inner);
+            var outer = new SigningHttpMessageHandler(new BasicAWSCredentials("foo", "bar"), RegionEndpoint.USEast1, inner, false);
             outer.Dispose();
             Assert.AreEqual(true, inner.Disposed);
         }
