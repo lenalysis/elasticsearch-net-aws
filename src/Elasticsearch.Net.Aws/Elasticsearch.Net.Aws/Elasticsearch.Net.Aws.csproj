@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;net481</TargetFrameworks>
     <AssemblyName>Elasticsearch.Net.Aws</AssemblyName>
     <PackageId>Elasticsearch.Net.Aws</PackageId>
     <Version>7.2.2</Version>
@@ -13,22 +12,33 @@
     <PackageReleaseNotes>Newtonsoft fix &amp; framework upgrade.</PackageReleaseNotes>
     <PackageTags>elasticsearch elastic search aws amazon</PackageTags>
     <RepositoryUrl>https://github.com/bcuff/elasticsearch-net-aws</RepositoryUrl>
+    <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
 
+  <!--
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <AssemblyOriginatorKeyFile>$(ProjectDir)..\..\..\key.snk</AssemblyOriginatorKeyFile>
     <SignAssembly>true</SignAssembly>
     <PublicSign Condition="'$(OS)' != 'Windows_NT'">true</PublicSign>
   </PropertyGroup>
+  -->
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.*" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSCRT" Version="0.4.3" />
+    <PackageReference Include="AWSCRT-AUTH" Version="0.4.3" />
     <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="2.1.1" />
     <PackageReference Include="AWSSDK.Core" Version="3.7.*" />
     <PackageReference Include="Elasticsearch.Net" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\..\..\..\.nuget\packages\newtonsoft.json\13.0.1\lib\netstandard2.0\Newtonsoft.Json.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>

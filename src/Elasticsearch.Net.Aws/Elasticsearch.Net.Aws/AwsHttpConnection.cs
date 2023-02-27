@@ -1,10 +1,11 @@
 ﻿using System;
-using System.IO;
-using System.Net;
+using System.Collections.Concurrent;
 using System.Net.Http;
 using Amazon;
 using Amazon.Runtime;
 using Amazon.Runtime.CredentialManagement;
+using Aws.Crt.Auth;
+using Aws.Crt.Http;
 #if NETSTANDARD
 using Amazon.Extensions.NETCore.Setup;
 #endif
@@ -18,6 +19,8 @@ namespace Elasticsearch.Net.Aws
     {
         private readonly AWSCredentials _credentials;
         private readonly RegionEndpoint _region;
+
+        private readonly ConcurrentDictionary<RequestData, DateTimeOffset> _times = new ConcurrentDictionary<RequestData, DateTimeOffset>();
 
         public bool IsServerlessService;
 
@@ -82,12 +85,52 @@ namespace Elasticsearch.Net.Aws
         {
         }
 
-#if NETSTANDARD
+        protected override HttpRequestMessage CreateHttpRequestMessage(RequestData requestData)
+        {
+            var request = base.CreateHttpRequestMessage(requestData);
+
+            var creds = _credentials.GetCredentials();
+            var serviceName = IsServerlessService ? "aoss" : "es";
+            var awsRequest = new HttpRequest
+            {
+                Method = requestData.Method.ToString(),
+                Headers = new[] { new HttpHeader("host", requestData.Uri.Host) },
+                Uri = request.RequestUri.PathAndQuery,
+            };
+
+            var awsSigningConfig = new AwsSigningConfig
+            {
+                Service = serviceName,
+                Region = _region.SystemName,
+                Algorithm = AwsSigningAlgorithm.SIGV4,
+                SignatureType = AwsSignatureType.HTTP_REQUEST_VIA_HEADERS,
+                SignedBodyHeader = AwsSignedBodyHeaderType.X_AMZ_CONTENT_SHA256,
+                Credentials = new Credentials(creds.AccessKey, creds.SecretKey, creds.Token),
+            };
+
+            var result = AwsSigner.SignHttpRequest(awsRequest, awsSigningConfig);
+            var signingResult = result.Get();
+            var signedRequest = signingResult.SignedRequest;
+            foreach (var header in signedRequest.Headers)
+            {
+                if (request.Headers.Contains(header.Name))
+                    request.Headers.Remove(header.Name);
+                request.Headers.TryAddWithoutValidation(header.Name, header.Value);
+            }
+
+            return request;
+        }
+
         protected override HttpMessageHandler CreateHttpClientHandler(RequestData requestData)
         {
-            var innerHandler = base.CreateHttpClientHandler(requestData);
-            return new SigningHttpMessageHandler(_credentials, _region, innerHandler, IsServerlessService);
+            var baseHandler = base.CreateHttpClientHandler(requestData);
+            return new SigningHttpMessageHandler(_credentials, _region, IsServerlessService)
+            {
+                InnerHandler = baseHandler,
+            };
         }
+
+#if NETSTANDARD
 #else
         [ThreadStatic]
         static int _createHttpRequestDepth;
@@ -134,6 +177,7 @@ namespace Elasticsearch.Net.Aws
             {
                 throw new Exception("Unable to retrieve credentials required to sign the request.");
             }
+            var serviceName = IsServerlessService ? "aoss" : "es";
             SignV4Util.SignRequestAsync(request, credentials, _region.SystemName, "es").Wait();
         }
 #endif

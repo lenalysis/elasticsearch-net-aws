@@ -1,51 +1,65 @@
 ﻿#if NETSTANDARD
+using System;
+using System.Diagnostics;
 using Amazon;
 using Amazon.Runtime;
-using System;
-using System.Collections.Generic;
 using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Aws.Crt.Auth;
+using Aws.Crt.Http;
+using Newtonsoft.Json.Linq;
 
 namespace Elasticsearch.Net.Aws
 {
-    class SigningHttpMessageHandler : HttpClientHandler
+    class SigningHttpMessageHandler : DelegatingHandler
     {
         readonly AWSCredentials _credentials;
         readonly RegionEndpoint _region;
-        readonly HttpMessageHandler _innerHandler;
         readonly bool _isServerlessService;
-        bool _innerHandlerDisposed;
 
-        public SigningHttpMessageHandler(AWSCredentials credentials, RegionEndpoint region,
-            HttpMessageHandler innerHandler, bool isServerlessService)
+        public DateTimeOffset Timestamp;
+
+        public SigningHttpMessageHandler(AWSCredentials credentials, RegionEndpoint region, bool isServerlessService)
         {
             _credentials = credentials;
             _region = region;
-            _innerHandler = innerHandler;
             _isServerlessService = isServerlessService;
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var credentials = await _credentials.GetCredentialsAsync().ConfigureAwait(false);
+            var credentials = _credentials.GetCredentials();
             var serviceName = _isServerlessService ? "aoss" : "es";
-            await SignV4Util.SignRequestAsync(new HttpRequestMessageAdapter(request), credentials, _region.SystemName, serviceName).ConfigureAwait(false);
-            return await _innerHandler.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (!_innerHandlerDisposed)
+            var creds = new Credentials(credentials.AccessKey, credentials.SecretKey, credentials.Token);
+            var awsRequest = new HttpRequest
             {
-                if (disposing)
-                {
-                    _innerHandler.Dispose();
-                }
-                _innerHandlerDisposed = true;
+                Method = request.Method.ToString(),
+                Headers = new[] { new HttpHeader("host", request.RequestUri.Host) },
+                Uri = request.RequestUri.PathAndQuery,
+            };
+            var awsSigningConfig = new AwsSigningConfig
+            {
+                Service = serviceName,
+                Region = _region.SystemName,
+                Algorithm = AwsSigningAlgorithm.SIGV4,
+                SignatureType = AwsSignatureType.HTTP_REQUEST_VIA_HEADERS,
+                SignedBodyHeader = AwsSignedBodyHeaderType.X_AMZ_CONTENT_SHA256,
+                Credentials = creds,
+                Timestamp = Timestamp,
+            };
+
+            var result = AwsSigner.SignHttpRequest(awsRequest, awsSigningConfig);
+            var signingResult = result.Get();
+            var signedRequest = signingResult.SignedRequest;
+            foreach (var header in signedRequest.Headers)
+            {
+                if (request.Headers.Contains(header.Name))
+                    request.Headers.Remove(header.Name);
+                request.Headers.TryAddWithoutValidation(header.Name, header.Value);
             }
-            base.Dispose(disposing);
+
+            return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
         }
     }
 }
